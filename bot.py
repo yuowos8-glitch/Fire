@@ -24,7 +24,6 @@ scheduler = AsyncIOScheduler()
 
 DB_FILE = "db.json"
 
-# ===== КУЛДАУН =====
 _last_click = {}
 
 def cooldown(user_id, seconds=1):
@@ -35,10 +34,9 @@ def cooldown(user_id, seconds=1):
     _last_click[user_id] = now
     return True
 
-# ===== БАЗА =====
 def load_db():
     if not os.path.exists(DB_FILE):
-        return {"users": {}, "pairs": {}, "next_pair_id": 1}
+        return {"users": {}, "pairs": {}, "next_pair_id": 1, "admin_context": None}
     with open(DB_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -59,7 +57,6 @@ def time_to_midnight():
     return f"{h}ч {m}м"
 
 def last_7_days(marks):
-    """marks = список дат 'YYYY-MM-DD'. Возвращает 7 последних дней с отметками"""
     today = datetime.utcnow() + timedelta(hours=TZ_OFFSET)
     result = []
     for i in range(6, -1, -1):
@@ -67,7 +64,6 @@ def last_7_days(marks):
         result.append("✅" if d in marks else "⬜")
     return " ".join(result)
 
-# ===== ИМЯ =====
 async def get_name(user_id):
     try:
         chat = await bot.get_chat(int(user_id))
@@ -79,7 +75,6 @@ async def get_name(user_id):
     except:
         return f"ID {user_id}"
 
-# ===== ФРАЗЫ =====
 MARK_PHRASES = [
     "🔥 Огонь горит ярче!",
     "💪 Ты сегодня красавчик!",
@@ -103,7 +98,6 @@ def progress_bar(current, target):
     return "▰" * filled + "▱" * (10 - filled)
 
 def get_achievements(streak):
-    """Возвращает список достижений"""
     all_ach = [
         (1, "🌱 Первый шаг"),
         (7, "🔥 Неделя"),
@@ -116,7 +110,6 @@ def get_achievements(streak):
     locked = [f"🔒 {name}" for days, name in all_ach if streak < days]
     return unlocked, locked
 
-# ===== ПОДПИСКА =====
 async def is_subscribed(user_id):
     try:
         member = await bot.get_chat_member(CHANNEL, user_id)
@@ -149,7 +142,6 @@ async def send_subscribe(msg_or_call):
         except:
             pass
 
-# ===== КЛАВИАТУРЫ =====
 def main_menu(is_admin=False):
     kb = [
         [InlineKeyboardButton(text="🔥 Отметиться", callback_data="mark")],
@@ -189,7 +181,6 @@ def back_admin_kb():
         [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin")]
     ])
 
-# ===== ГЛАВНОЕ МЕНЮ =====
 def render_main(user_id):
     db = load_db()
     u = db["users"].get(str(user_id), {})
@@ -220,7 +211,6 @@ def render_main(user_id):
     )
     return text, main_menu(is_admin=(user_id == ADMIN_ID))
 
-# ===== START =====
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     try:
@@ -312,7 +302,6 @@ async def back_main(call: CallbackQuery):
         pass
     await call.answer()
 
-# ===== ОТМЕТКА =====
 @dp.callback_query(F.data == "mark")
 async def mark(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -341,11 +330,10 @@ async def mark(call: CallbackQuery):
         u["best_streak"] = max(u.get("best_streak", 0), u["streak"])
         u["last_mark_date"] = today
 
-        # Календарь
         marks = u.get("marks", [])
         if today not in marks:
             marks.append(today)
-        u["marks"] = marks[-30:]  # храним последние 30 дней
+        u["marks"] = marks[-30:]
 
         for pid, pair in db["pairs"].items():
             if pair.get("user2_id") is None:
@@ -379,7 +367,6 @@ async def mark(call: CallbackQuery):
         print("mark error:", e)
         await call.answer("Ошибка, попробуй ещё", show_alert=True)
 
-# ===== СТАТИСТИКА =====
 @dp.callback_query(F.data == "stats")
 async def stats(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -402,7 +389,6 @@ async def stats(call: CallbackQuery):
         best = u.get("best_streak", 0)
         bar = progress_bar(streak, best) if best > 0 else "▱▱▱▱▱▱▱▱▱▱"
 
-        # Достижения
         unlocked, locked = get_achievements(streak)
         ach_text = "\n".join(unlocked + locked) if (unlocked or locked) else "—"
 
@@ -422,7 +408,6 @@ async def stats(call: CallbackQuery):
         pass
     await call.answer()
 
-# ===== ДОСТИЖЕНИЯ =====
 @dp.callback_query(F.data == "achievements")
 async def achievements(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -454,7 +439,6 @@ async def achievements(call: CallbackQuery):
         pass
     await call.answer()
 
-# ===== КАЛЕНДАРЬ =====
 @dp.callback_query(F.data == "calendar")
 async def calendar(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -486,7 +470,6 @@ async def calendar(call: CallbackQuery):
         pass
     await call.answer()
 
-# ===== ТОП-10 =====
 @dp.callback_query(F.data == "top")
 async def top(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -520,7 +503,6 @@ async def top(call: CallbackQuery):
         print("top error:", e)
     await call.answer()
 
-# ===== МЕНЮ ПАР =====
 @dp.callback_query(F.data == "pair_menu")
 async def pair_menu_handler(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -543,7 +525,6 @@ async def pair_menu_handler(call: CallbackQuery):
         pass
     await call.answer()
 
-# ===== СОЗДАТЬ ПАРУ =====
 @dp.callback_query(F.data == "create_pair")
 async def create_pair(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -590,7 +571,6 @@ async def create_pair(call: CallbackQuery):
         print("create_pair error:", e)
     await call.answer()
 
-# ===== МОИ ОГНИ =====
 @dp.callback_query(F.data == "my_pairs")
 async def my_pairs(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -658,7 +638,6 @@ async def my_pairs(call: CallbackQuery):
         print("my_pairs error:", e)
     await call.answer()
 
-# ===== ОТКРЫТЬ ПАРУ =====
 @dp.callback_query(F.data.startswith("open_pair_"))
 async def open_pair(call: CallbackQuery):
     if not cooldown(call.from_user.id):
@@ -707,7 +686,6 @@ async def open_pair(call: CallbackQuery):
         print("open_pair error:", e)
     await call.answer()
 
-# ===== ПОДТВЕРЖДЕНИЕ РАЗРЫВА =====
 @dp.callback_query(F.data.startswith("confirm_break_"))
 async def confirm_break(call: CallbackQuery):
     pid = call.data.replace("confirm_break_", "")
@@ -749,7 +727,6 @@ async def do_break(call: CallbackQuery):
         print("break error:", e)
     await call.answer()
 
-# ===== АДМИНКА =====
 @dp.callback_query(F.data == "admin")
 async def admin(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
@@ -761,7 +738,6 @@ async def admin(call: CallbackQuery):
         pass
     await call.answer()
 
-# ===== АДМИН: ЮЗЕРЫ =====
 @dp.callback_query(F.data == "admin_users")
 async def admin_users(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
@@ -800,6 +776,9 @@ async def admin_edit_user(call: CallbackQuery):
     uid = call.data.replace("admin_edit_user_", "")
     name = await get_name(uid)
     try:
+        db = load_db()
+        db["admin_context"] = {"type": "user", "id": uid}
+        save_db(db)
         await call.message.edit_text(
             f"👤 Юзер: {name}\n"
             f"🆔 ID: {uid}\n\n"
@@ -807,15 +786,10 @@ async def admin_edit_user(call: CallbackQuery):
             f"Пример: 100",
             reply_markup=back_admin_kb()
         )
-        # Сохраняем контекст
-        db = load_db()
-        db["admin_context"] = {"type": "user", "id": uid}
-        save_db(db)
     except:
         pass
     await call.answer()
 
-# ===== АДМИН: ПАРЫ =====
 @dp.callback_query(F.data == "admin_pairs_list")
 async def admin_pairs_list(call: CallbackQuery):
     if call.from_user.id != ADMIN_ID:
@@ -840,4 +814,182 @@ async def admin_pairs_list(call: CallbackQuery):
                     callback_data=f"admin_edit_pair_{pid}"
                 )
             ])
-        buttons
+        buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin")])
+
+        await call.message.edit_text(
+            "👥 Выбери пару для накрутки:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    except Exception as e:
+        print("admin_pairs_list error:", e)
+    await call.answer()
+
+@dp.callback_query(F.data.startswith("admin_edit_pair_"))
+async def admin_edit_pair(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return
+    pid = call.data.replace("admin_edit_pair_", "")
+    try:
+        db = load_db()
+        pair = db["pairs"].get(pid)
+        if not pair:
+            await call.answer("❌ Не найдено", show_alert=True)
+            return
+        n1 = await get_name(pair["user1_id"])
+        n2 = await get_name(pair["user2_id"])
+        db["admin_context"] = {"type": "pair", "id": pid}
+        save_db(db)
+        await call.message.edit_text(
+            f"👥 Пара ID: {pid}\n"
+            f"🔥 {n1} + {n2}\n"
+            f"📊 Текущая серия: {pair.get('streak', 0)} дн.\n\n"
+            f"Напиши число в чат — накручу этой паре.\n"
+            f"Пример: 100",
+            reply_markup=back_admin_kb()
+        )
+    except:
+        pass
+    await call.answer()
+
+@dp.callback_query(F.data == "admin_stats")
+async def admin_stats(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return
+    try:
+        db = load_db()
+        users = len(db["users"])
+        pairs = len([p for p in db["pairs"].values() if p.get("user2_id")])
+        total_streak = sum(u.get("streak", 0) for u in db["users"].values())
+        top = sorted(db["users"].items(), key=lambda x: x[1].get("streak", 0), reverse=True)[:5]
+
+        top_lines = []
+        for i, (uid, u) in enumerate(top):
+            name = await get_name(uid)
+            top_lines.append(f"{i+1}. {name} — {u.get('streak',0)} дн.")
+
+        await call.message.edit_text(
+            f"📊 Юзеров: {users}\n"
+            f"👥 Пар: {pairs}\n"
+            f"🔥 Суммарный стрик: {total_streak}\n\n"
+            f"🏆 Топ-5:\n" + "\n".join(top_lines),
+            reply_markup=back_admin_kb()
+        )
+    except:
+        pass
+    await call.answer()
+
+@dp.callback_query(F.data == "admin_broadcast")
+async def admin_broadcast(call: CallbackQuery):
+    if call.from_user.id != ADMIN_ID:
+        return
+    try:
+        await call.message.edit_text(
+            "📢 Введи текст для рассылки в чат:",
+            reply_markup=back_admin_kb()
+        )
+    except:
+        pass
+    await call.answer()
+
+@dp.message(F.from_user.id == ADMIN_ID)
+async def admin_text(message: Message):
+    try:
+        text = message.text or ""
+        if not text:
+            return
+
+        db = load_db()
+
+        # Рассылка
+        if text.startswith("/broadcast ") or (db.get("admin_context") is None and text.startswith("broadcast ")):
+            msg = text.replace("/broadcast ", "").replace("broadcast ", "", 1)
+            sent = 0
+            for uid in db["users"]:
+                try:
+                    await bot.send_message(int(uid), msg)
+                    sent += 1
+                except:
+                    pass
+            await message.answer(f"✅ Отправлено {sent}")
+            return
+
+        # Накрутка через контекст
+        ctx = db.get("admin_context")
+        if ctx and text.isdigit():
+            num = int(text)
+            if ctx["type"] == "user":
+                uid = ctx["id"]
+                if uid in db["users"]:
+                    db["users"][uid]["streak"] = num
+                    db["users"][uid]["best_streak"] = max(db["users"][uid].get("best_streak", 0), num)
+                    save_db(db)
+                    await message.answer(f"✅ Юзеру накручено {num}")
+                    db["admin_context"] = None
+                    save_db(db)
+                    return
+            elif ctx["type"] == "pair":
+                pid = ctx["id"]
+                if pid in db["pairs"]:
+                    db["pairs"][pid]["streak"] = num
+                    save_db(db)
+                    await message.answer(f"✅ Паре накручено {num}")
+                    db["admin_context"] = None
+                    save_db(db)
+                    return
+
+        await message.answer("❌ Не понял. Используй кнопки админки.")
+    except Exception as e:
+        print("admin_text error:", e)
+
+async def daily_reset():
+    try:
+        db = load_db()
+        today = today_str()
+        for uid, u in db["users"].items():
+            if u.get("last_mark_date") != today:
+                u["streak"] = 0
+                u["last_mark_date"] = None
+                try:
+                    phrase = random.choice(BURN_PHRASES)
+                    await bot.send_message(int(uid), f"{phrase}\n\nНажми /start")
+                except:
+                    pass
+        for pid, pair in db["pairs"].items():
+            if pair.get("user2_id") is None:
+                continue
+            if not (pair.get("user1_marked") and pair.get("user2_marked")):
+                pair["streak"] = 0
+                pair["last_mark_date"] = None
+            pair["user1_marked"] = False
+            pair["user2_marked"] = False
+        save_db(db)
+    except Exception as e:
+        print("daily_reset error:", e)
+
+async def reminder():
+    try:
+        db = load_db()
+        today = today_str()
+        for uid, u in db["users"].items():
+            if u.get("last_mark_date") != today:
+                try:
+                    await bot.send_message(
+                        int(uid),
+                        "⚠️ Огонёк сгорит через 3 часа!\nУспей отметиться 👇",
+                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                            [InlineKeyboardButton(text="🔥 Отметиться", callback_data="mark")]
+                        ])
+                    )
+                except:
+                    pass
+    except Exception as e:
+        print("reminder error:", e)
+
+async def main():
+    scheduler.add_job(daily_reset, "cron", hour=21, minute=0)
+    scheduler.add_job(reminder, "cron", hour=18, minute=0)
+    scheduler.start()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
